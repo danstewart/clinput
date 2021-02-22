@@ -1,5 +1,6 @@
 use crate::prompt_error::PromptError;
-use std::io::{stdin, stdout, Write};
+use crate::prompt_config::PromptConfig;
+use std::io::{stdin, stdout, Write, Read};
 
 /// Structure containing all details of a prompt
 pub struct Prompt {
@@ -7,6 +8,7 @@ pub struct Prompt {
 	choices: Option<Vec<String>>,
 	default: Option<String>,
 	validator: Option<Box<dyn Fn(String) -> Result<String, PromptError>>>,
+	config: PromptConfig,
 }
 
 impl Prompt {
@@ -16,6 +18,7 @@ impl Prompt {
 			choices: None,
 			default: None,
 			validator: None,
+			config: PromptConfig::default(),
 		}
 	}
 
@@ -61,7 +64,9 @@ impl Prompt {
 
 		// Print question, take input
 		print!("{}", &self.format());
-		let mut s: String = self.take_input()?;
+
+		// TODO: Allow setting a io::Cursor in config and pass that here
+		let mut s: String = self.take_input(stdin())?;
 
 		// Use default if we have one
 		if s.is_empty() {
@@ -84,13 +89,18 @@ impl Prompt {
 
 		while !success {
 			print!("{}", &self.format());
-			let res = self.take_input()?;
+			let res = self.take_input(stdin())?;
 			match func(res) {
 				Ok(val) => {
 					answer = Some(val);
 					success = true;
 				}
-				Err(e) => println!("{}", e),
+				Err(e) => {
+					if self.config.no_loop {
+						return Err(e);
+					}
+					println!("{}", e)
+				}
 			}
 		}
 
@@ -102,11 +112,11 @@ impl Prompt {
 	}
 
 	/// Take input from STDIN
-	fn take_input(&self) -> Result<String, PromptError> {
+	fn take_input(&self, mut input: impl Read) -> Result<String, PromptError> {
 		let _ = stdout().flush();
 
 		let mut s = String::new();
-		match stdin().read_line(&mut s) {
+		match input.read_to_string(&mut s) {
 			Ok(_) => chomp(&mut s),
 			Err(e) => return Err(PromptError::InputError(e)),
 		};
