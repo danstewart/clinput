@@ -175,6 +175,7 @@ impl Prompt {
 #[cfg(test)]
 mod tests {
 	use crate::Prompt;
+	use crate::Validators::not_blank;
 
 	// Prompt::format
 	#[test]
