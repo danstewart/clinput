@@ -1,6 +1,36 @@
-use crate::prompt_error::PromptError;
+/*
+Note about testing
+
+I have spent wayyyyy too long trying to get this working by using Read
+and Write traits to make it easily testable.
+
+I have now given up - so the core methods are not tested.
+
+Feel free to try get it working, I've realised I'm wasting my time and don't
+actually care.
+
+Good luck.
+*/
+
 use crate::prompt_config::PromptConfig;
-use std::io::{stdin, stdout, Write, Read};
+use crate::prompt_error::PromptError;
+use std::io::{stdin, stdout, Read, Write};
+
+/// Chomps new line from a string, returns the chomped part(s)
+pub fn chomp(s: &mut String) -> String {
+	let mut chomped: String = String::new();
+
+	if let Some('\n') = s.chars().next_back() {
+		s.pop();
+		chomped += "\n";
+	}
+	if let Some('\r') = s.chars().next_back() {
+		s.pop();
+		chomped += "\r";
+	}
+
+	chomped
+}
 
 /// Structure containing all details of a prompt
 pub struct Prompt {
@@ -12,7 +42,7 @@ pub struct Prompt {
 }
 
 impl Prompt {
-	pub fn new(question: &str) -> Self {
+	pub fn new(question: &str) -> Prompt {
 		Prompt {
 			question: String::from(question),
 			choices: None,
@@ -23,7 +53,7 @@ impl Prompt {
 	}
 
 	/// Set the default value
-	pub fn default(mut self, default: &str) -> Self {
+	pub fn default(mut self, default: &str) -> Prompt {
 		self.default = Some(String::from(default));
 		self
 	}
@@ -39,7 +69,7 @@ impl Prompt {
 	pub fn validate(
 		mut self,
 		func: impl Fn(String) -> Result<String, PromptError> + 'static,
-	) -> Self {
+	) -> Prompt {
 		self.validator = Some(Box::new(func));
 		self
 	}
@@ -63,10 +93,10 @@ impl Prompt {
 		}
 
 		// Print question, take input
-		print!("{}", &self.format());
+		println!("{}", self.format());
 
 		// TODO: Allow setting a io::Cursor in config and pass that here
-		let mut s: String = self.take_input(stdin())?;
+		let mut s: String = self.take_input()?;
 
 		// Use default if we have one
 		if s.is_empty() {
@@ -89,7 +119,7 @@ impl Prompt {
 
 		while !success {
 			print!("{}", &self.format());
-			let res = self.take_input(stdin())?;
+			let res = self.take_input()?;
 			match func(res) {
 				Ok(val) => {
 					answer = Some(val);
@@ -112,11 +142,11 @@ impl Prompt {
 	}
 
 	/// Take input from STDIN
-	fn take_input(&self, mut input: impl Read) -> Result<String, PromptError> {
+	fn take_input(&self) -> Result<String, PromptError> {
 		let _ = stdout().flush();
 
 		let mut s = String::new();
-		match input.read_to_string(&mut s) {
+		match stdin().read_to_string(&mut s) {
 			Ok(_) => chomp(&mut s),
 			Err(e) => return Err(PromptError::InputError(e)),
 		};
@@ -141,23 +171,6 @@ impl Prompt {
 		format!("{}{} ", our_question, line_end)
 	}
 }
-
-/// Chomps new line from a string, returns the chomped part(s)
-fn chomp(s: &mut String) -> String {
-	let mut chomped: String = String::new();
-
-	if let Some('\n') = s.chars().next_back() {
-		s.pop();
-		chomped += "\n";
-	}
-	if let Some('\r') = s.chars().next_back() {
-		s.pop();
-		chomped += "\r";
-	}
-
-	chomped
-}
-
 
 #[cfg(test)]
 mod tests {
@@ -184,10 +197,9 @@ mod tests {
 
 	#[test]
 	fn format_with_choices_and_default() {
-		let prompt = Prompt::new("Dummy").choices(["a", "b", "c"].to_vec()).default("a");
+		let prompt = Prompt::new("Dummy")
+			.choices(["a", "b", "c"].to_vec())
+			.default("a");
 		assert_eq!(prompt.format(), "Dummy [a, b, c] ");
 	}
-
-	// Input
-	// TODO!
 }

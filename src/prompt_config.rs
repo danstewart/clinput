@@ -4,8 +4,6 @@ pub struct PromptConfig {
 
 impl Default for PromptConfig {
 	fn default() -> PromptConfig {
-		PromptConfig {
-			no_loop: false
-		}
+		PromptConfig { no_loop: false }
 	}
 }

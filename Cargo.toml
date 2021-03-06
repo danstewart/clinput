@@ -1,6 +1,6 @@
 [package]
 name = "clinput"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Dan Stewart <git@mail.danstewart.dev>"]
 edition = "2018"
 description = "A basic command line prompt module"
