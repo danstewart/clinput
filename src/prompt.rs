@@ -14,7 +14,7 @@ Good luck.
 
 use crate::prompt_config::PromptConfig;
 use crate::prompt_error::PromptError;
-use std::io::{stdin, stdout, Read, Write};
+use std::io::{stdin, stdout, Write};
 
 /// Chomps new line from a string, returns the chomped part(s)
 pub fn chomp(s: &mut String) -> String {
@@ -34,34 +34,39 @@ pub fn chomp(s: &mut String) -> String {
 
 /// Structure containing all details of a prompt
 pub struct Prompt {
-	question: String,
-	choices: Option<Vec<String>>,
-	default: Option<String>,
-	validator: Option<Box<dyn Fn(String) -> Result<String, PromptError>>>,
 	config: PromptConfig,
 }
 
 impl Prompt {
-	pub fn new(question: &str) -> Prompt {
+	pub fn new() -> Prompt {
 		Prompt {
-			question: String::from(question),
-			choices: None,
-			default: None,
-			validator: None,
 			config: PromptConfig::default(),
+		}
+	}
+
+	// Helper constructors
+	pub fn not_blank() -> Prompt {
+		Prompt {
+			config: PromptConfig::not_blank(),
+		}
+	}
+
+	pub fn yn() -> Prompt {
+		Prompt {
+			config: PromptConfig::yn(),
 		}
 	}
 
 	/// Set the default value
 	pub fn default(mut self, default: &str) -> Prompt {
-		self.default = Some(String::from(default));
+		self.config.default = Some(String::from(default));
 		self
 	}
 
 	/// Set the choices
 	pub fn choices(mut self, choices: Vec<&str>) -> Self {
 		let mapped: Vec<String> = choices.iter().map(|&i| String::from(i)).collect();
-		self.choices = Some(mapped);
+		self.config.choices = Some(mapped);
 		self
 	}
 
@@ -70,20 +75,20 @@ impl Prompt {
 		mut self,
 		func: impl Fn(String) -> Result<String, PromptError> + 'static,
 	) -> Prompt {
-		self.validator = Some(Box::new(func));
+		self.config.validator = Some(Box::new(func));
 		self
 	}
 
 	/// Ask the question
-	pub fn ask(&self) -> Result<String, PromptError> {
+	pub fn ask(&self, question: &str) -> Result<String, PromptError> {
 		// If we have a custom validator then pass to the validate_loop()
-		if let Some(validator) = &self.validator {
-			return self.validate_loop(validator);
+		if let Some(validator) = &self.config.validator {
+			return self.validate_loop(question, validator);
 		}
 
 		// If we have preset choices then call validate()
-		if let Some(choices) = &self.choices {
-			return self.validate_loop(|input: String| {
+		if let Some(choices) = &self.config.choices {
+			return self.validate_loop(question, |input: String| {
 				let err_msg = format!("Valid options are: {}", choices.join(", "));
 				match choices.iter().any(|i| i == &input) {
 					true => Ok(input),
@@ -93,14 +98,12 @@ impl Prompt {
 		}
 
 		// Print question, take input
-		println!("{}", self.format());
-
-		// TODO: Allow setting a io::Cursor in config and pass that here
+		print!("{}", self.format(question));
 		let mut s: String = self.take_input()?;
 
 		// Use default if we have one
 		if s.is_empty() {
-			if let Some(default) = &self.default {
+			if let Some(default) = &self.config.default {
 				s = default.to_string();
 			}
 		}
@@ -110,7 +113,7 @@ impl Prompt {
 
 	/// Ask question and validate input
 	/// Loop on validation failure
-	fn validate_loop<F>(&self, func: F) -> Result<String, PromptError>
+	fn validate_loop<F>(&self, question: &str, func: F) -> Result<String, PromptError>
 	where
 		F: Fn(String) -> Result<String, PromptError>,
 	{
@@ -118,7 +121,7 @@ impl Prompt {
 		let mut success = false;
 
 		while !success {
-			print!("{}", &self.format());
+			print!("{}", &self.format(question));
 			let res = self.take_input()?;
 			match func(res) {
 				Ok(val) => {
@@ -126,9 +129,6 @@ impl Prompt {
 					success = true;
 				}
 				Err(e) => {
-					if self.config.no_loop {
-						return Err(e);
-					}
 					println!("{}", e)
 				}
 			}
@@ -146,7 +146,7 @@ impl Prompt {
 		let _ = stdout().flush();
 
 		let mut s = String::new();
-		match stdin().read_to_string(&mut s) {
+		match stdin().read_line(&mut s) {
 			Ok(_) => chomp(&mut s),
 			Err(e) => return Err(PromptError::InputError(e)),
 		};
@@ -156,15 +156,15 @@ impl Prompt {
 
 	/// Format the question
 	/// Displaying the default and options
-	fn format(&self) -> String {
-		let mut our_question = String::from(&self.question);
+	fn format(&self, question: &str) -> String {
+		let mut our_question = String::from(question);
 		let line_end = chomp(&mut our_question);
 		our_question = String::from(our_question.trim());
 
 		// If we have a default value then rejig the question to show that
-		if let Some(choices) = &self.choices {
+		if let Some(choices) = &self.config.choices {
 			our_question = format!("{} [{}]", our_question, choices.join(", "));
-		} else if let Some(default) = &self.default {
+		} else if let Some(default) = &self.config.default {
 			our_question = format!("{} [{}]", our_question, default);
 		}
 
@@ -175,32 +175,29 @@ impl Prompt {
 #[cfg(test)]
 mod tests {
 	use crate::Prompt;
-	use crate::Validators::not_blank;
 
 	// Prompt::format
 	#[test]
 	fn format_plain() {
-		let prompt = Prompt::new("Dummy");
-		assert_eq!(prompt.format(), "Dummy ");
+		let prompt = Prompt::new();
+		assert_eq!(prompt.format("Dummy"), "Dummy ");
 	}
 
 	#[test]
 	fn format_with_default() {
-		let prompt = Prompt::new("Dummy").default("def");
-		assert_eq!(prompt.format(), "Dummy [def] ");
+		let prompt = Prompt::new().default("def");
+		assert_eq!(prompt.format("Dummy"), "Dummy [def] ");
 	}
 
 	#[test]
 	fn format_with_choices() {
-		let prompt = Prompt::new("Dummy").choices(["a", "b", "c"].to_vec());
-		assert_eq!(prompt.format(), "Dummy [a, b, c] ");
+		let prompt = Prompt::new().choices(["a", "b", "c"].to_vec());
+		assert_eq!(prompt.format("Dummy"), "Dummy [a, b, c] ");
 	}
 
 	#[test]
 	fn format_with_choices_and_default() {
-		let prompt = Prompt::new("Dummy")
-			.choices(["a", "b", "c"].to_vec())
-			.default("a");
-		assert_eq!(prompt.format(), "Dummy [a, b, c] ");
+		let prompt = Prompt::new().choices(["a", "b", "c"].to_vec()).default("a");
+		assert_eq!(prompt.format("Dummy"), "Dummy [a, b, c] ");
 	}
 }

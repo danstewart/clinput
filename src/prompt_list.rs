@@ -32,8 +32,8 @@ mod tests {
 	#[test]
 	fn prompt_list_builder() {
 		let prompt_list = PromptList::new()
-			.add(Prompt::new("Dummy"))
-			.add(Prompt::new("Dummy 2"));
+			.add(Prompt::new())
+			.add(Prompt::not_blank());
 
 		assert_eq!(prompt_list.prompts.len(), 2);
 	}
@@ -41,8 +41,8 @@ mod tests {
 	#[test]
 	fn prompt_list_next() {
 		let mut prompt_list = PromptList::new()
-			.add(Prompt::new("Dummy"))
-			.add(Prompt::new("Dummy 2"));
+			.add(Prompt::new())
+			.add(Prompt::not_blank());
 
 		assert!(prompt_list.next().is_some());
 		assert!(prompt_list.next().is_some());
